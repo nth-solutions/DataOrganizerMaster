@@ -31,32 +31,37 @@ import purejavacomm.UnsupportedCommOperationException;
 
 
 public class Frame extends JFrame {
-	public static final int NUM_TEST_PARAMETERS = 14;
+	public static final int NUM_TEST_PARAMETERS = 13;
 
-	private int magSampleRate;          			//instance variable for holding the magnetometer sample rate
-	private int accelGyroSampleRate;    			//instance variable for holding the Accerometer and Gyroscope Sample Rate
-	private int accelSensitivity;       			//Accelerometer Sensitivity (8G)
-	private int gyroSensitivity;        			//Gyroscope Sensitivity (1000 DPS)
-	private int accelFilter;            			//Accelerometer Filter (92 Hz)
-	private int gyroFilter;             			//Gyroscope Filter     (92 Hz)
+	//Test Parameters (All must be of type "int")
+	private int timedTestFlag = 1;
+	private int testLength = 25;      			
+	private int accelGyroSampleRate;    		
+	private int magSampleRate;          			
+	private int accelSensitivity;       		
+	private int gyroSensitivity;        		
+	private int accelFilter;            			
+	private int gyroFilter;             		
+	
+	//Flags
 	private boolean readMode = true;    			//Flag that tracks if the program is in read or write mode
 	private boolean portInitialized = false;
 	private boolean portOpened = false;
 	private boolean dataStreamsInitialized = false;
+	
+	//Output File Info and Variables
 	private String nameOfFile = "";     			//Sets the name of file to an empty string to start
-	private int lengthOfTest = 25;      			//Defaults the length of the test to 25 seconds
-	private boolean error;       					//If an error occurs while creating the .CSV files, this will be set to false
+	private String fileOutputDirectoryStr;			//The directory to write the test to
+	private int expectedTestNum = 0;                //The number of test that are expected to be received 
+	private Organizer organizer = new Organizer();  //Object used for creating .CSV files
+	
+	//Serial Port Variables
 	private SerialPort serialPort;      			//Object for the serial port class
-	private Thread readThread;          			//Thread that the serial Port is on
 	private static CommPortIdentifier portId;       //Object used for opening a comm ports
 	private static Enumeration portList;            //Object used for finding comm ports
 	private InputStream inputStream;                //Object used for reading serial data 
 	private OutputStream outputStream;              //Object used for writing serial data
-	private Organizer organizer = new Organizer();  //Object used for creating .CSV files 
-	private boolean incommingData = false;          //Boolean that tracks if more Data is in the serial buffer
-	private int testNum = 0;                        //Current Test Number that is being read from the serial buffer
-	private int expectedTestNum = 0;                //The number of test that are expected to be received 
-	private String fileOutputDirectoryStr;			//The directory to write the test to
+	
 	public static Frame frameInstance;
 
 
@@ -80,13 +85,9 @@ public class Frame extends JFrame {
 
 	public static void main(String args[]) {
 		Frame frame = Frame.getFrameInstance();
-		while (!frameInstance.getPortInitializedFlag()) {			
-		}
-		while (true) {
-			if (frame.getReadModeFlag()) {	
-				frameInstance.dataListener();
-			}
-			//Write is controlled by write button so it doesn't have a listener
+		frame.findPorts();
+		while(true) {
+			
 		}
 	}
 
@@ -94,7 +95,7 @@ public class Frame extends JFrame {
 	 * Builds a list the names of all the serial ports to place in the combo box
 	 * @param evt event pasted in by any button or action that this method was called by (method of passing info related to the source)
 	 */
-	private void findPorts(ActionEvent evt) {
+	private void findPorts() {
 		//Fills the portEnum data structure (functions like arrayList) with ports (data type that encapsulates the name and hardware interface info)
 		Enumeration<CommPortIdentifier> portEnumList = CommPortIdentifier.getPortIdentifiers();   
 
@@ -152,7 +153,7 @@ public class Frame extends JFrame {
 							SerialPort.PARITY_NONE);
 				} 
 				else {                                        //If write mode is enable
-					serialPort.setSerialPortParams(9600,       //Opens serial port at 9600 Baud so the URI module can read the data
+					serialPort.setSerialPortParams(38400,       //Opens serial port at 9600 Baud so the URI module can read the data
 							SerialPort.DATABITS_8,
 							SerialPort.STOPBITS_1,
 							SerialPort.PARITY_NONE);
@@ -167,9 +168,9 @@ public class Frame extends JFrame {
 	}
 
 
-	private void initSerialPort(ActionEvent evt) {
+	private void initSerialPort() {
 		
-		if (commPortsComboBox.getSelectedItem() == null) {
+		if (commPortsComboBox.getSelectedItem() != null) {
 
 			String selectedCommID = commPortsComboBox.getSelectedItem().toString();      //creates a string of selected item; Name of the com port as a string
 
@@ -182,6 +183,13 @@ public class Frame extends JFrame {
 			if (readMode) {                                         //If the program is set to read mode
 				mainStatusLabel.setForeground(new Color(0, 0, 0));  //sets the font as black, it might gave been set as red from before
 				mainStatusLabel.setText("Waiting for Data");                //Read mode is on, so the program is waing for data
+				Runnable readThread = new Runnable() {
+					public void run() {
+						dataListener();
+					}
+				};
+				readThread.run();
+				
 			} 
 			else {
 				mainStatusLabel.setForeground(new Color(0, 0, 0));     //sets the font as black, it might gave been set as red from before 
@@ -193,7 +201,7 @@ public class Frame extends JFrame {
 	}
 
 
-	private void closeSerialPort(ActionEvent evt) {
+	private void closeSerialPort() {
 		//If the disconnect button is pressed: disconnects from the serial port and resets the UI   
 		if (serialPort != null) {
 			serialPort.close();     //closes the serial port
@@ -205,23 +213,91 @@ public class Frame extends JFrame {
 			serialToggleBtn.setEnabled(true);                               //turns the button back on so the mode can be cahanged
 		}
 	}
+	
+	private void serialToggleBtnActionPerformed() {
+		//Method that controls whether the program is in read or write mode
+		if (readMode) { //If the program was in readMode, it will now be swapped to write mode
+			readMode = !readMode;   //changes the mode    
+			//Everything else is for disabling and enabling components and changing the colors
+			serialToggleBtn.setLabel("Write Mode");
+			serialToggleBtn.setBackground(new Color(0, 204, 0));
+			writeModeStateLabel.setForeground(new Color(0, 0, 204));
+			writeModeStateLabel.setText("Currently Enabled");
+			readModeStateLabel.setForeground(new Color(255, 0, 0));
+			readModeStateLabel.setText("Currently Disabled");
+			readModeLabel.setForeground(new Color(0, 0, 0));
+			writeModeLabel.setForeground(new Color(0, 153, 0));
+			writeBtn.setBackground(new Color(124, 252, 0));
+			accelGyroSampleField.setEditable(true);
+			magSampleField.setEditable(true);
+			testLengthField.setEditable(true);
+			accelSensiComboBox.setEnabled(true);
+			gyroSensiComboBox.setEnabled(true);
+			accelFilterComboBox.setEnabled(true);
+			gyroFilterComboBox.setEnabled(true);
+			writeBtn.setEnabled(true);
+			nameOfFileField.setEditable(false);
+			timeStampCheck.setEnabled(false);
+			saveOnly9AxisCheck.setEnabled(false);
+			saveTestParamsCheck.setEnabled(false);
+		} 
+		else {    //if the program was in write mode, it will now be swapped 
+			readMode = !readMode;   //swaps the mode
+			//Everything else is for disabling and enabling components and changing the colors
+			serialToggleBtn.setLabel("Read Mode");
+			serialToggleBtn.setBackground(new Color(204, 0, 204));
+			readModeStateLabel.setForeground(new Color(0, 0, 204));
+			readModeStateLabel.setText("Currently Enabled");
+			writeModeStateLabel.setForeground(new Color(255, 0, 0));
+			writeModeStateLabel.setText("Currently Disabled");
+			readModeLabel.setForeground(new Color(102, 0, 102));
+			writeModeLabel.setForeground(new Color(0, 0, 0));
+			writeBtn.setBackground(new Color(153, 153, 153));
+			accelGyroSampleField.setEditable(false);
+			magSampleField.setEditable(false);
+			testLengthField.setEditable(false);
+			accelSensiComboBox.setEnabled(false);
+			gyroSensiComboBox.setEnabled(false);
+			accelFilterComboBox.setEnabled(false);
+			gyroFilterComboBox.setEnabled(false);
+			writeBtn.setEnabled(false);
+			nameOfFileField.setEditable(true);
+			timeStampCheck.setEnabled(true);
+			saveOnly9AxisCheck.setEnabled(true);
+			saveTestParamsCheck.setEnabled(true);
+		}
+	}
 
 
+	public void updateProgress(int progress) {   //Method that updates the progress with the percentage that has been completed so far in making the .CSV file
+		jProgressBar1.setValue(progress);
+	}
+
+	private void writeButtonHandler() {
+		Runnable paramThread = new Runnable() {
+			public void run() {
+				sendParameters();
+			}
+		};
+		paramThread.run();
+	}
 	private boolean sendParameters() {
 		//Method for writing data to URI module. Sends programming config to URI module    
 
 		boolean modeSelected = false;
-		if (portInitialized) {
+		if (portInitialized && dataStreamsInitialized) {
 
 			try {
-				int attemptCounter = 1;
+				int attemptCounter = 0;
+				
 				while(!modeSelected) {
 					//Start condition followed by 'S' to tell firmware to start saving new parameters
 					outputStream.write(new String("1111S").getBytes());
 
 					//long startTime = System.currentTimeMillis();
 					int temp = -1;
-					while(temp == -1) {
+					long startTime = System.currentTimeMillis();
+					while(temp == -1 && (System.currentTimeMillis() - startTime) < 250) {
 						if (inputStream.available() > 0) {
 							temp = inputStream.read();
 						}	
@@ -237,7 +313,7 @@ public class Frame extends JFrame {
 					}
 
 					//After 3 failed attempts, show error
-					if (attemptCounter == 3) {
+					if (attemptCounter == 50) {
 
 						//Command not recognized module
 						if (temp == '?') {
@@ -245,8 +321,12 @@ public class Frame extends JFrame {
 						}
 
 						//Timeout (not yet used)
+						else if (temp == -1) {
+							mainStatusLabel.setText("Module Unresponsive or Connected Improperly (Timeout)");
+						}
+						
 						else {
-							mainStatusLabel.setText("Module Unresponsive or Configured Improperly, Verify Module is Connected Properly and Powered ON");
+							mainStatusLabel.setText("Communication Error, Try Again");
 						}
 
 						//Exit method, communication failed
@@ -254,15 +334,20 @@ public class Frame extends JFrame {
 					}
 				}
 
-
 				int[] writeData = new int[NUM_TEST_PARAMETERS];
-				writeData[0] = Integer.parseInt(accelGyroSampleField.getText());//accelGyroSampleRate
-				writeData[1] = Integer.parseInt(magSampleField.getText());    //magSampleRate
-				writeData[2] = Integer.parseInt(lenOfTestField.getText());     //lengthOfTest
-				writeData[3] = Integer.parseInt(accelSensiComboBox.getSelectedItem().toString());  //accelSensitivity
-				writeData[4] = Integer.parseInt(gyroSensiComboBox.getSelectedItem().toString());   //gyroSensitivity
-				writeData[5] = Integer.parseInt(accelFilterComboBox.getSelectedItem().toString());  //accelFilter
-				writeData[6] = Integer.parseInt(gyroFilterComboBox.getSelectedItem().toString());  //gyroFilter
+				writeData[0] = 5;			//Module ID (Hardware Version)
+				writeData[1] = 19;			//Serial Number
+				writeData[2] = 15;			//Firmware ID 
+				writeData[3] = getTickThreshold(Integer.parseInt(accelGyroSampleField.getText()));		//Timer0 Tick Threshold (Interrupt)
+				writeData[4] = 0;			//Delay After Start
+				writeData[5] = 0;			//Timed Test Flag
+				writeData[6] = Integer.parseInt(testLengthField.getText());     //Test Duration
+				writeData[7] = Integer.parseInt(accelGyroSampleField.getText());//Accel Gyro Sample Rate
+				writeData[8] = Integer.parseInt(magSampleField.getText());    //Mag Sample Rate
+				writeData[9] = Integer.parseInt(accelSensiComboBox.getSelectedItem().toString());  //Accel Sensitivity
+				writeData[10] = Integer.parseInt(gyroSensiComboBox.getSelectedItem().toString());   //Gyro Sensitivity
+				writeData[11] = Integer.parseInt(accelFilterComboBox.getSelectedItem().toString());  //Accel Filter
+				writeData[12] = Integer.parseInt(gyroFilterComboBox.getSelectedItem().toString());  //Gyro Filter
 
 				for (int paramNum = 0; paramNum < writeData.length; paramNum++) {
 					boolean paramReceived = false;
@@ -291,18 +376,19 @@ public class Frame extends JFrame {
 
 						//If module echoed correctly, send 'A' for Acknowledge
 						if (temp == writeData[paramNum]) {
-							outputStream.write(new String("A").getBytes());
+							outputStream.write(new String("CA").getBytes());
 							paramReceived = true;
+							attemptCounter = 0;
 						}
 						//If module echoed incorrectly, send 'N' for Not-Acknowledge
 						else {
-							outputStream.write(new String("N").getBytes());
+							outputStream.write(new String("CN").getBytes());
 							attemptCounter++;
 						}
 						
 						//After 3 failed attempts, exit and notify the user
 						if (attemptCounter == 3) {
-							mainStatusLabel.setText("Module not Echoing Properly, Check Connections and Firmware Version (Baud Rate)");
+							mainStatusLabel.setText("Module not Echoing Properly, Check Connections");
 							
 							//Exit method, communication failed
 							return false;
@@ -336,71 +422,9 @@ public class Frame extends JFrame {
 		return true;
 	}
 
-	private void serialToggleBtnActionPerformed(ActionEvent evt) {
-		//Method that controls whether the program is in read or write mode
-		if (readMode) { //If the program was in readMode, it will now be swapped to write mode
-			readMode = !readMode;   //changes the mode    
-			//Everything else is for disabling and enabling components and changing the colors
-			serialToggleBtn.setLabel("Write Mode");
-			serialToggleBtn.setBackground(new Color(0, 204, 0));
-			writeModeStateLabel.setForeground(new Color(0, 0, 204));
-			writeModeStateLabel.setText("Currently Enabled");
-			readModeStateLabel.setForeground(new Color(255, 0, 0));
-			readModeStateLabel.setText("Currently Disabled");
-			readModeLabel.setForeground(new Color(0, 0, 0));
-			writeModeLabel.setForeground(new Color(0, 153, 0));
-			writeBtn.setBackground(new Color(124, 252, 0));
-			accelGyroSampleField.setEditable(true);
-			magSampleField.setEditable(true);
-			lenOfTestField.setEditable(true);
-			accelSensiComboBox.setEnabled(true);
-			gyroSensiComboBox.setEnabled(true);
-			accelFilterComboBox.setEnabled(true);
-			gyroFilterComboBox.setEnabled(true);
-			writeBtn.setEnabled(true);
-			nameOfFileField.setEditable(false);
-			timeStampCheck.setEnabled(false);
-			saveOnly9AxisCheck.setEnabled(false);
-			saveTestParamsCheck.setEnabled(false);
-		} 
-		else {    //if the program was in write mode, it will now be swapped 
-			readMode = !readMode;   //swaps the mode
-			//Everything else is for disabling and enabling components and changing the colors
-			serialToggleBtn.setLabel("Read Mode");
-			serialToggleBtn.setBackground(new Color(204, 0, 204));
-			readModeStateLabel.setForeground(new Color(0, 0, 204));
-			readModeStateLabel.setText("Currently Enabled");
-			writeModeStateLabel.setForeground(new Color(255, 0, 0));
-			writeModeStateLabel.setText("Currently Disabled");
-			readModeLabel.setForeground(new Color(102, 0, 102));
-			writeModeLabel.setForeground(new Color(0, 0, 0));
-			writeBtn.setBackground(new Color(153, 153, 153));
-			accelGyroSampleField.setEditable(false);
-			magSampleField.setEditable(false);
-			lenOfTestField.setEditable(false);
-			accelSensiComboBox.setEnabled(false);
-			gyroSensiComboBox.setEnabled(false);
-			accelFilterComboBox.setEnabled(false);
-			gyroFilterComboBox.setEnabled(false);
-			writeBtn.setEnabled(false);
-			nameOfFileField.setEditable(true);
-			timeStampCheck.setEnabled(true);
-			saveOnly9AxisCheck.setEnabled(true);
-			saveTestParamsCheck.setEnabled(true);
-		}
-	}
-
-
-
-	public void updateProgress(int progress) {   //Method that updates the progress with the percentage that has been completed so far in making the .CSV file
-		jProgressBar1.setValue(progress);
-	}
-
-
-
 
 	public void dataListener() {                                //serial Port listner. Checks for incomming data 
-		while (readMode) {
+		while (readMode && dataStreamsInitialized) {
 			try {
 				if (inputStream.available() > 0) {      
 					jProgressBar1.setStringPainted(true);       //Sets the progress bar up to display a percentage
@@ -448,7 +472,7 @@ public class Frame extends JFrame {
 
 					//reads the parameters for the test that are sent from the URI module
 					int paramNum = 0;
-					while (paramNum < NUM_TEST_PARAMETERS) {
+					while (paramNum < NUM_TEST_PARAMETERS * 2) {
 						if (inputStream.available() > 0) {
 							testParameters.add(paramNum, (int) (inputStream.read()));
 							paramNum++;
@@ -456,22 +480,26 @@ public class Frame extends JFrame {
 					}
 
 					//each parameter is sent as two bytes. The higher byte is multiplied by 256 and the bottom byte is added on
-					accelGyroSampleRate = (testParameters.get(0) * 256) + testParameters.get(1);
-					magSampleRate = (testParameters.get(2) * 256) + testParameters.get(3);
-					lengthOfTest = (testParameters.get(4) * 256) + testParameters.get(5);
-					accelSensitivity = (testParameters.get(6) * 256) + testParameters.get(7);
-					gyroSensitivity = (testParameters.get(8) * 256) + testParameters.get(9);
-					accelFilter = (testParameters.get(10) * 256) + testParameters.get(11);
-					gyroFilter = (testParameters.get(12) * 256) + testParameters.get(13);					//sets the GUI to display the new parameters
+					timedTestFlag = (testParameters.get(10) * 256) + testParameters.get(11);
+					testLength = (testParameters.get(12) * 256) + testParameters.get(13);
+					accelGyroSampleRate = (testParameters.get(14) * 256) + testParameters.get(15);
+					magSampleRate = (testParameters.get(16) * 256) + testParameters.get(17);
+					accelSensitivity = (testParameters.get(18) * 256) + testParameters.get(19);
+					gyroSensitivity = (testParameters.get(20) * 256) + testParameters.get(21);
+					accelFilter = (testParameters.get(22) * 256) + testParameters.get(23);
+					gyroFilter = (testParameters.get(24) * 256) + testParameters.get(25);					
+					
+					//Populate dashboard with the parameters sent by the module
+					testLengthFieldR.setText(Integer.toString(testLength));            //Test Length
 					numTestFieldR.setText(Integer.toString(expectedTestNum));
-					accelGyroSampleFieldR.setText(Integer.toString(accelGyroSampleRate)); //accelGyroSampleRate
-					magSampleFieldR.setText(Integer.toString(magSampleRate));           //magSampleRate
-					lenOfTestFieldR.setText(Integer.toString(lengthOfTest));            //lengthOfTest
-					accelSensiFieldR.setText(Integer.toString(accelSensitivity));       //accelSensitivity
-					gyroSensiFieldR.setText(Integer.toString(gyroSensitivity));         //gyroSensitivity
-					accelFilterFieldR.setText(Integer.toString(accelFilter));           //accelFilter
-					gyroFilterFieldR.setText(Integer.toString(gyroFilter));             //gyroFilter 
+					accelGyroSampleFieldR.setText(Integer.toString(accelGyroSampleRate)); //Accel Gyro Sample Rate
+					magSampleFieldR.setText(Integer.toString(magSampleRate));           //Mag Sample Rate
+					accelSensiFieldR.setText(Integer.toString(accelSensitivity));       //Accel Sensitivity
+					gyroSensiFieldR.setText(Integer.toString(gyroSensitivity));         //Gyro Sensitivity
+					accelFilterFieldR.setText(Integer.toString(accelFilter));           //Accel Filter
+					gyroFilterFieldR.setText(Integer.toString(gyroFilter));             //Gyro Filter 
 					nameOfFile = nameOfFileField.getText();
+					
 					if (saveTestParamsCheck.getState()) {
 						//Adds the parameters and date to the end of the file Name
 						Date date = new Date();
@@ -571,6 +599,24 @@ public class Frame extends JFrame {
 		}
 	}
 
+	public int getTickThreshold(int accelGyroSampleRate) {
+		switch (accelGyroSampleRate) {
+		case(60):			//60Hz
+			return 33173;
+		case(120):
+			return 33021;
+		case (240):
+			return 16343;
+		case (480):
+			return 8021;
+		case (500):
+			return 7679;
+		case (960):
+			return 3689;
+		default:	//960-96
+			return 3848;
+		}
+	}
 	public String getMonth(int month) {  //Method for changing the data in int form to a string
 		switch (month) {
 		case (0):
@@ -625,7 +671,7 @@ public class Frame extends JFrame {
 		accelGyroSampleField = new javax.swing.JTextField();
 		nameOfFileLabel = new javax.swing.JLabel();
 		timeStampCheck = new java.awt.Checkbox();
-		lenOfTestField = new javax.swing.JTextField();
+		testLengthField = new javax.swing.JTextField();
 		lenOfTestLabel = new javax.swing.JLabel();
 		jProgressBar1 = new javax.swing.JProgressBar();
 		saveOnly9AxisCheck = new java.awt.Checkbox();
@@ -659,7 +705,7 @@ public class Frame extends JFrame {
 		accelGyroSampleFieldR = new javax.swing.JTextField();
 		accelSensiLabelR = new javax.swing.JLabel();
 		accelSensiFieldR = new javax.swing.JTextField();
-		lenOfTestFieldR = new javax.swing.JTextField();
+		testLengthFieldR = new javax.swing.JTextField();
 		lenOfTestLabelR = new javax.swing.JLabel();
 		numTestsLabelR = new javax.swing.JLabel();
 		numTestFieldR = new javax.swing.JTextField();
@@ -685,9 +731,9 @@ public class Frame extends JFrame {
 
 		timeStampCheck.setLabel("Time Stamp Data");
 
-		lenOfTestField.setEditable(false);
-		lenOfTestField.setText("25");
-		lenOfTestField.setToolTipText("Max Value: 65534");
+		testLengthField.setEditable(false);
+		testLengthField.setText("25");
+		testLengthField.setToolTipText("Max Value: 65534");
 
 		lenOfTestLabel.setText("Length of Test (Sec):");
 
@@ -700,7 +746,7 @@ public class Frame extends JFrame {
 		commPortsComboBox.setModel(new DefaultComboBoxModel(new String [] {"     --------------"}));
 		commPortsComboBox.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
-				initSerialPort(evt);
+				initSerialPort();
 			}
 		});
 
@@ -709,16 +755,16 @@ public class Frame extends JFrame {
 		disconnectBtn.setLabel("Disconnect");
 		disconnectBtn.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
-				closeSerialPort(evt);
+				closeSerialPort();
 			}
 		});
 
 		//Search Available Ports Button
 		commPortsBtn.setBackground(new Color(153, 153, 153));
-		commPortsBtn.setLabel("Search Available Ports");
+		commPortsBtn.setLabel("Refresh Port List");
 		commPortsBtn.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
-				findPorts(evt);
+				findPorts();
 			}
 		});
 
@@ -742,7 +788,7 @@ public class Frame extends JFrame {
 		writeBtn.setLabel("Write Data");
 		writeBtn.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
-				sendParameters();
+				writeButtonHandler();
 			}
 		});
 
@@ -790,7 +836,7 @@ public class Frame extends JFrame {
 
 		accelSensiFieldR.setEditable(false);
 
-		lenOfTestFieldR.setEditable(false);
+		testLengthFieldR.setEditable(false);
 
 		lenOfTestLabelR.setText("Length of Test (Seconds):");
 
@@ -802,7 +848,7 @@ public class Frame extends JFrame {
 		serialToggleBtn.setLabel("Read Mode");
 		serialToggleBtn.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
-				serialToggleBtnActionPerformed(evt);
+				serialToggleBtnActionPerformed();
 			}
 		});
 
@@ -904,7 +950,7 @@ public class Frame extends JFrame {
 																		.addPreferredGap(ComponentPlacement.RELATED, 10, Short.MAX_VALUE)
 																		.addComponent(magSampleField, GroupLayout.PREFERRED_SIZE, 66, GroupLayout.PREFERRED_SIZE))
 																.addGroup(layout.createSequentialGroup()
-																		.addComponent(lenOfTestField, GroupLayout.PREFERRED_SIZE, 59, GroupLayout.PREFERRED_SIZE)
+																		.addComponent(testLengthField, GroupLayout.PREFERRED_SIZE, 59, GroupLayout.PREFERRED_SIZE)
 																		.addGap(11)
 																		.addComponent(writeBtn, GroupLayout.DEFAULT_SIZE, 218, Short.MAX_VALUE))
 																.addGroup(layout.createSequentialGroup()
@@ -971,7 +1017,7 @@ public class Frame extends JFrame {
 										.addPreferredGap(ComponentPlacement.UNRELATED)
 										.addGroup(layout.createParallelGroup(Alignment.LEADING, false)
 												.addComponent(magSampleFieldR, GroupLayout.DEFAULT_SIZE, 61, Short.MAX_VALUE)
-												.addComponent(lenOfTestFieldR))
+												.addComponent(testLengthFieldR))
 										.addContainerGap(22, Short.MAX_VALUE))
 								.addGroup(layout.createSequentialGroup()
 										.addGroup(layout.createParallelGroup(Alignment.TRAILING)
@@ -1033,7 +1079,7 @@ public class Frame extends JFrame {
 						.addGroup(layout.createParallelGroup(Alignment.TRAILING)
 								.addGroup(layout.createParallelGroup(Alignment.BASELINE)
 										.addComponent(lenOfTestLabel)
-										.addComponent(lenOfTestField, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
+										.addComponent(testLengthField, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
 								.addComponent(writeBtn, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
 						.addPreferredGap(ComponentPlacement.RELATED)
 						.addGroup(layout.createParallelGroup(Alignment.LEADING)
@@ -1066,7 +1112,7 @@ public class Frame extends JFrame {
 						.addPreferredGap(ComponentPlacement.RELATED)
 						.addGroup(layout.createParallelGroup(Alignment.BASELINE)
 								.addComponent(lenOfTestLabelR)
-								.addComponent(lenOfTestFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+								.addComponent(testLengthFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
 								.addComponent(numTestsLabelR)
 								.addComponent(numTestFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
 						.addPreferredGap(ComponentPlacement.RELATED)
@@ -1127,8 +1173,8 @@ public class Frame extends JFrame {
 	public static javax.swing.JProgressBar jProgressBar1;
 	private javax.swing.JSeparator jSeparator1;
 	private javax.swing.JSeparator jSeparator2;
-	private javax.swing.JTextField lenOfTestField;
-	private javax.swing.JTextField lenOfTestFieldR;
+	private javax.swing.JTextField testLengthField;
+	private javax.swing.JTextField testLengthFieldR;
 	private javax.swing.JLabel lenOfTestLabel;
 	private javax.swing.JLabel lenOfTestLabelR;
 	private javax.swing.JTextField magSampleField;
