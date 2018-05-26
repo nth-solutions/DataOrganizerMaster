@@ -15,9 +15,10 @@ import com.sun.javafx.collections.MappingChange.Map;
 public class Organizer {        //Class for Creating .CSV files
 	private int progress = 0;
 	
-    public boolean sortData(int[] data, String NameOfFile, int magInterval, double period, boolean timeStamp, boolean only9Axis, String fileOutputDirectory) {
+    public boolean sortData(int[] data, int testNum, int totalNumTests, String NameOfFile, int magInterval, double period, boolean timeStamp, boolean only9Axis, String fileOutputDirectory) {
     //Method to create .CSV
     	Frame frame = Frame.getFrameInstance();
+    	frame.setWriteStatusLabel("Creating CSV for Test #" + (testNum));        //Tell the user a new .CSV has been created.
     	frame.updateProgress(0);
     	PrintWriter DataFile = null;    //Object used to create .CSV file    
         
@@ -29,7 +30,7 @@ public class Organizer {        //Class for Creating .CSV files
         for(int pos = 0; pos < data.length; pos++) {
         	if(data[pos] == -1) {
         		endPosition = pos;
-        		System.out.println(endPosition);
+        		//System.out.println(endPosition);
         	}
         }
         
@@ -53,7 +54,7 @@ public class Organizer {        //Class for Creating .CSV files
         	frame.updateProgress(progress);
         	if (sampleCounter == 9 && lineNum % 10 == 0 && magInterval == 10 && nineAxisFlag == true) {     //if new line is zero, then the mag data should is in this block of data so it needs to written to the .CSV
             	test.put(lineNum, sampleHolder);
-            	System.out.println("9 : " + test.get(lineNum).size());
+            	//System.out.println("9 : " + test.get(lineNum).size());
             	sampleHolder = new Vector();  
             	lineNum++;
             	nineAxisFlag = false;
@@ -62,7 +63,7 @@ public class Organizer {        //Class for Creating .CSV files
         	
         	else if (sampleCounter == 6 && magInterval == 10 && nineAxisFlag == false ) {     //if new line is zero, then the mag data should is in this block of data so it needs to written to the .CSV
             	test.put(lineNum, sampleHolder);
-            	System.out.println("6 : " + test.get(lineNum).size());
+            	//System.out.println("6 : " + test.get(lineNum).size());
             	sampleHolder = new Vector();  
             	lineNum++;
             	setCounter++;
@@ -85,7 +86,7 @@ public class Organizer {        //Class for Creating .CSV files
         } 
         
         lineNum --;
-        System.out.println("BEFORE");
+        //System.out.println("BEFORE");
         int dataFlag = 0;
         int sum = 0;
       
@@ -165,6 +166,13 @@ public class Organizer {        //Class for Creating .CSV files
         catch (FileNotFoundException e) {
             return false;
         } 
+        
+        if (testNum == totalNumTests) {
+        	frame.setWriteStatusLabel("Data Transfer Complete");
+        }
+        else {
+        	frame.setWriteStatusLabel("Finished Creating CSV for Test #" + testNum);
+        }
         
         frame.updateProgress(100);
         DataFile.write(builder.toString());     //writes the string buffer to the .CSV creating the file

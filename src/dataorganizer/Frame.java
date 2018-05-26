@@ -28,6 +28,9 @@ import purejavacomm.CommPortIdentifier;
 import purejavacomm.PortInUseException;
 import purejavacomm.SerialPort;
 import purejavacomm.UnsupportedCommOperationException;
+import java.awt.Dimension;
+import java.awt.ComponentOrientation;
+import java.awt.Component;
 
 
 public class Frame extends JFrame {
@@ -65,11 +68,10 @@ public class Frame extends JFrame {
 	public static Frame frameInstance;
 
 
-	private Frame() {            //Constructor of Class; adds components to GUI and sets the behavior of the frame on which components are placed
+	private Frame() {
+		setPreferredSize(new Dimension(490, 758));            //Constructor of Class; adds components to GUI and sets the behavior of the frame on which components are placed
 		setTitle("Data Organizer Rev-20 (5/24/2018)");
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		setMinimumSize(new java.awt.Dimension(450, 575));
-		setResizable(false);
 		initComponents();
 		setVisible(true);
 	}
@@ -172,9 +174,9 @@ public class Frame extends JFrame {
 		
 		if (commPortsComboBox.getSelectedItem() != null) {
 
-			String selectedCommID = commPortsComboBox.getSelectedItem().toString();      //creates a string of selected item; Name of the com port as a string
+			String selectedCommID = commPortsComboBox.getSelectedItem().toString();      //creates a string of selected item; Name of the comm port as a string
 
-			openSerialPort(selectedCommID);                                        //opens the serial port with the selected Com Port
+			openSerialPort(selectedCommID);                                        //opens the serial port with the selected comm Port
 
 			commPortsBtn.setLabel("Port Opened Successfully");      //sets the Button Label to notify the user that the port is open
 			commPortsBtn.setBackground(new Color(124, 252, 0));
@@ -182,14 +184,14 @@ public class Frame extends JFrame {
 
 			if (readMode) {                                         //If the program is set to read mode
 				mainStatusLabel.setForeground(new Color(0, 0, 0));  //sets the font as black, it might gave been set as red from before
-				mainStatusLabel.setText("Waiting for Data");                //Read mode is on, so the program is waing for data
-				Runnable readThread = new Runnable() {
+				mainStatusLabel.setText("Waiting for Data");                //Read mode is on, so the program is waiting for data
+				Runnable readOperation = new Runnable() {
 					public void run() {
 						dataListener();
 					}
 				};
-				readThread.run();
-				
+				Thread readThread = new Thread(readOperation);
+				readThread.start();
 			} 
 			else {
 				mainStatusLabel.setForeground(new Color(0, 0, 0));     //sets the font as black, it might gave been set as red from before 
@@ -228,6 +230,7 @@ public class Frame extends JFrame {
 			readModeLabel.setForeground(new Color(0, 0, 0));
 			writeModeLabel.setForeground(new Color(0, 153, 0));
 			writeBtn.setBackground(new Color(124, 252, 0));
+			timedTestCheckbox.setEnabled(true);
 			accelGyroSampleField.setEditable(true);
 			magSampleField.setEditable(true);
 			testLengthField.setEditable(true);
@@ -253,6 +256,7 @@ public class Frame extends JFrame {
 			readModeLabel.setForeground(new Color(102, 0, 102));
 			writeModeLabel.setForeground(new Color(0, 0, 0));
 			writeBtn.setBackground(new Color(153, 153, 153));
+			timedTestCheckbox.setEnabled(false);
 			accelGyroSampleField.setEditable(false);
 			magSampleField.setEditable(false);
 			testLengthField.setEditable(false);
@@ -268,17 +272,13 @@ public class Frame extends JFrame {
 		}
 	}
 
-
-	public void updateProgress(int progress) {   //Method that updates the progress with the percentage that has been completed so far in making the .CSV file
-		jProgressBar1.setValue(progress);
-	}
-
 	private void writeButtonHandler() {
-		Runnable paramThread = new Runnable() {
+		Runnable sendParamOperation = new Runnable() {
 			public void run() {
 				sendParameters();
 			}
 		};
+		Thread paramThread = new Thread(sendParamOperation);
 		paramThread.run();
 	}
 	private boolean sendParameters() {
@@ -333,6 +333,13 @@ public class Frame extends JFrame {
 						return false;
 					}
 				}
+				
+				if (timedTestCheckbox.isSelected()) {
+					timedTestFlag = 1;
+				}
+				else {
+					timedTestFlag = 0;
+				}
 
 				int[] writeData = new int[NUM_TEST_PARAMETERS];
 				writeData[0] = 5;			//Module ID (Hardware Version)
@@ -340,7 +347,7 @@ public class Frame extends JFrame {
 				writeData[2] = 15;			//Firmware ID 
 				writeData[3] = getTickThreshold(Integer.parseInt(accelGyroSampleField.getText()));		//Timer0 Tick Threshold (Interrupt)
 				writeData[4] = 0;			//Delay After Start
-				writeData[5] = 0;			//Timed Test Flag
+				writeData[5] = timedTestFlag;			//Timed Test Flag
 				writeData[6] = Integer.parseInt(testLengthField.getText());     //Test Duration
 				writeData[7] = Integer.parseInt(accelGyroSampleField.getText());//Accel Gyro Sample Rate
 				writeData[8] = Integer.parseInt(magSampleField.getText());    //Mag Sample Rate
@@ -458,36 +465,27 @@ public class Frame extends JFrame {
 
 
 					//Determine number of tests to expect/ get test parameters
-					expectedTestNum = -1;                     //Sets the number of tests that are going to be received to 255 temporarily 
-					//Checks for the number of tests
-					while (expectedTestNum == -1) {        
-						if (inputStream.available() > 0) {
-							dataByte = (int) (inputStream.read());
-							if (dataByte > 0) { //checks to see if the data that was read is a null character or real data
-								expectedTestNum = dataByte;//if it is real then it is saved in expectedTestNum
-								mainStatusLabel.setText("Collecting Data for " + expectedTestNum + " Tests");//Tells the user how many tests are being transmitted
-							}
-						}
-					}
-
+					expectedTestNum = (int) (inputStream.read());  
+					mainStatusLabel.setText("Collecting Data for " + expectedTestNum + " Tests");//Tells the user how many tests are being transmitted
 					//reads the parameters for the test that are sent from the URI module
 					int paramNum = 0;
-					while (paramNum < NUM_TEST_PARAMETERS * 2) {
+					while (paramNum < NUM_TEST_PARAMETERS) {
 						if (inputStream.available() > 0) {
-							testParameters.add(paramNum, (int) (inputStream.read()));
+							testParameters.add(paramNum, (int) ((inputStream.read() * 256) + (inputStream.read())));
 							paramNum++;
 						}
 					}
+					
 
 					//each parameter is sent as two bytes. The higher byte is multiplied by 256 and the bottom byte is added on
-					timedTestFlag = (testParameters.get(10) * 256) + testParameters.get(11);
-					testLength = (testParameters.get(12) * 256) + testParameters.get(13);
-					accelGyroSampleRate = (testParameters.get(14) * 256) + testParameters.get(15);
-					magSampleRate = (testParameters.get(16) * 256) + testParameters.get(17);
-					accelSensitivity = (testParameters.get(18) * 256) + testParameters.get(19);
-					gyroSensitivity = (testParameters.get(20) * 256) + testParameters.get(21);
-					accelFilter = (testParameters.get(22) * 256) + testParameters.get(23);
-					gyroFilter = (testParameters.get(24) * 256) + testParameters.get(25);					
+					timedTestFlag = testParameters.get(5);
+					testLength = testParameters.get(6);
+					accelGyroSampleRate = testParameters.get(7);
+					magSampleRate = testParameters.get(8);
+					accelSensitivity = testParameters.get(9);
+					gyroSensitivity = testParameters.get(10);
+					accelFilter = testParameters.get(11);
+					gyroFilter = testParameters.get(12);					
 					
 					//Populate dashboard with the parameters sent by the module
 					testLengthFieldR.setText(Integer.toString(testLength));            //Test Length
@@ -508,17 +506,15 @@ public class Frame extends JFrame {
 					}
 					//Loops until it all of the tests are collected
 
-					int testNum = 0;                                     //tracks the current index the test is on
+					int testNum = 1;                                     //tracks the current index the test is on
 
-					while (testNum < expectedTestNum) {
+					while (testNum <= expectedTestNum) {
 						int temp = 0;
 						testData = new ArrayList<Integer>();
 						//Start Condition test, The program is expecting to receive "1-2-3-4-5-6-7-8" as the start condition
 						startCondition = false;
 						while (!startCondition) {
 							if (inputStream.available() > 0) {
-								temp = inputStream.read();
-								System.out.println(temp);
 								for(int counter = 1; counter < 9;) {
 									temp = inputStream.read();
 									//System.out.println(temp);
@@ -530,7 +526,7 @@ public class Frame extends JFrame {
 									}
 								}
 								startCondition = true;                      //start condition flag is set to true so data collection will begin
-								writeStatusLabel.setText("Found the Start Condition For Test " + (testNum + 1) + ". Now Collecting Data");    //display to the user where the program is
+								writeStatusLabel.setText("Found the Start Condition For Test " + (testNum) + ". Now Collecting Data");    //display to the user where the program is
 								//System.out.println("Started");
 							}
 						}
@@ -560,7 +556,6 @@ public class Frame extends JFrame {
 									writeStatusLabel.setText("Found the Stop Condition For Test " + testNum + ".");    //display to the user where the program is
 									updateProgress(0);      //Update the progress bar so the last test is no longer being displayed
 								}
-								testNum++;
 							}
 						}
 
@@ -575,19 +570,19 @@ public class Frame extends JFrame {
 						}
 						finalData[j] = -1;
 
-						nameOfFile = PrefixNameOfFileField.getText() + " (#" + (testNum + 1) + ") " + nameOfFileField.getText() + " " + SuffixNameOfFileField.getText() + ".CSV";  //Add a number and .CSV to the file name
-
-						Runnable organizerThread = new Runnable() {
+						nameOfFile = PrefixNameOfFileField.getText() + " (#" + (testNum) + ") " + nameOfFileField.getText() + " " + SuffixNameOfFileField.getText() + ".CSV";  //Add a number and .CSV to the file name
+						final int testID = testNum;		//Must be final to work in the sortData routine
+						final int numTests = expectedTestNum;
+						Runnable organizerOperation = new Runnable() {
 							public void run() {
-								organizer.sortData(finalData, nameOfFile, (accelGyroSampleRate / magSampleRate), (1 / accelGyroSampleRate), timeStampCheck.getState(), saveOnly9AxisCheck.getState(), fileOutputDirectoryStr);  //create the .CSV with neccessary parameters
+								organizer.sortData(finalData, testID, numTests, nameOfFile, (accelGyroSampleRate / magSampleRate), (1 / accelGyroSampleRate), timeStampCheck.getState(), saveOnly9AxisCheck.getState(), fileOutputDirectoryStr);  //create the .CSV with neccessary parameters
 
 							}
 						};
-
-						organizerThread.run();      //start the new thread
+						Thread organizerThread = new Thread(organizerOperation);
+						organizerThread.start();      //start the new thread
 
 						testNum++;              //The test number is incremented to collect data for the next test
-						writeStatusLabel.setText("Creating CSV for " + (testNum));        //Tell the user a new .CSV has been created.
 					}
 				}
 			}
@@ -597,6 +592,15 @@ public class Frame extends JFrame {
 			}
 
 		}
+		writeStatusLabel.setText("Data Transfer Complete");
+	}
+	
+	public void updateProgress(int progress) {   //Method that updates the progress with the percentage that has been completed so far in making the .CSV file
+		jProgressBar1.setValue(progress);
+	}
+	
+	public void setWriteStatusLabel(String label) {
+		writeStatusLabel.setText(label);        //Tell the user a new .CSV has been created.
 	}
 
 	public int getTickThreshold(int accelGyroSampleRate) {
@@ -768,7 +772,7 @@ public class Frame extends JFrame {
 			}
 		});
 
-		mainStatusLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+		mainStatusLabel.setHorizontalAlignment(SwingConstants.CENTER);
 		mainStatusLabel.setText("Port Closed");
 
 		writeStatusLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
@@ -892,252 +896,223 @@ public class Frame extends JFrame {
 		lblFilePrefix = new JLabel("File Prefix");
 
 		lblFileSuffix = new JLabel("File Suffix");
+		
+		timedTestCheckbox = new JCheckBox("Timed Test");
+		timedTestCheckbox.setEnabled(false);
 
 		javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
 		layout.setHorizontalGroup(
-				layout.createParallelGroup(Alignment.LEADING)
+			layout.createParallelGroup(Alignment.LEADING)
 				.addGroup(layout.createSequentialGroup()
-						.addComponent(mainStatusLabel, GroupLayout.DEFAULT_SIZE, 438, Short.MAX_VALUE)
-						.addContainerGap())
-				.addGroup(layout.createSequentialGroup()
-						.addContainerGap()
-						.addGroup(layout.createParallelGroup(Alignment.TRAILING)
+					.addGap(23)
+					.addGroup(layout.createParallelGroup(Alignment.LEADING)
+						.addComponent(mainStatusLabel, GroupLayout.DEFAULT_SIZE, 426, Short.MAX_VALUE)
+						.addComponent(readModeStateLabel, GroupLayout.DEFAULT_SIZE, 426, Short.MAX_VALUE)
+						.addComponent(writeModeStateLabel, GroupLayout.DEFAULT_SIZE, 426, Short.MAX_VALUE)
+						.addComponent(timedTestCheckbox)
+						.addComponent(timeStampCheck, GroupLayout.DEFAULT_SIZE, 426, Short.MAX_VALUE)
+						.addComponent(jProgressBar1, GroupLayout.DEFAULT_SIZE, 426, Short.MAX_VALUE)
+						.addComponent(writeStatusLabel, GroupLayout.PREFERRED_SIZE, 400, GroupLayout.PREFERRED_SIZE)
+						.addComponent(saveOnly9AxisCheck, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+						.addGroup(layout.createSequentialGroup()
+							.addComponent(nameOfFileLabel)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(nameOfFileField, GroupLayout.PREFERRED_SIZE, 233, GroupLayout.PREFERRED_SIZE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(fileOutputDirectory, GroupLayout.DEFAULT_SIZE, 104, Short.MAX_VALUE))
+						.addComponent(saveTestParamsCheck, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+						.addGroup(layout.createSequentialGroup()
+							.addComponent(accelGyroSampleLabel, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(accelGyroSampleField, GroupLayout.PREFERRED_SIZE, 62, GroupLayout.PREFERRED_SIZE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(magSampleLabel, GroupLayout.PREFERRED_SIZE, 140, GroupLayout.PREFERRED_SIZE)
+							.addPreferredGap(ComponentPlacement.RELATED, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+							.addComponent(magSampleField, GroupLayout.PREFERRED_SIZE, 66, GroupLayout.PREFERRED_SIZE))
+						.addGroup(layout.createSequentialGroup()
+							.addComponent(accelSensiLabel, GroupLayout.DEFAULT_SIZE, 142, Short.MAX_VALUE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(accelSensiComboBox, 0, 53, Short.MAX_VALUE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(gyroSensiLabel, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(gyroSensiComboBox, 0, 57, Short.MAX_VALUE))
+						.addGroup(layout.createSequentialGroup()
+							.addComponent(serialToggleBtn, GroupLayout.PREFERRED_SIZE, 95, GroupLayout.PREFERRED_SIZE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(commPortsBtn, GroupLayout.DEFAULT_SIZE, 201, Short.MAX_VALUE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(commPortsComboBox, GroupLayout.PREFERRED_SIZE, 110, GroupLayout.PREFERRED_SIZE))
+						.addGroup(layout.createSequentialGroup()
+							.addComponent(accelSensiLabelR, GroupLayout.PREFERRED_SIZE, 117, GroupLayout.PREFERRED_SIZE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(accelSensiFieldR, GroupLayout.PREFERRED_SIZE, 58, GroupLayout.PREFERRED_SIZE)
+							.addGap(18)
+							.addComponent(gyroSensiLabelR, GroupLayout.PREFERRED_SIZE, 149, GroupLayout.PREFERRED_SIZE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(gyroSensiFieldR, 61, 61, 61))
+						.addGroup(layout.createSequentialGroup()
+							.addComponent(accelFilterLabelR, GroupLayout.PREFERRED_SIZE, 123, GroupLayout.PREFERRED_SIZE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(accelFilterFieldR, GroupLayout.PREFERRED_SIZE, 59, GroupLayout.PREFERRED_SIZE)
+							.addGap(18)
+							.addComponent(gyroFilterLabelR, GroupLayout.PREFERRED_SIZE, 134, GroupLayout.PREFERRED_SIZE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(gyroFilterFieldR, 61, 61, 61))
+						.addGroup(layout.createSequentialGroup()
+							.addComponent(accelGyroSampleLabelR, GroupLayout.DEFAULT_SIZE, 146, Short.MAX_VALUE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(accelGyroSampleFieldR, GroupLayout.PREFERRED_SIZE, 60, GroupLayout.PREFERRED_SIZE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(magSampleLabelR, GroupLayout.PREFERRED_SIZE, 140, GroupLayout.PREFERRED_SIZE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(magSampleFieldR, GroupLayout.DEFAULT_SIZE, 65, Short.MAX_VALUE))
+						.addGroup(layout.createSequentialGroup()
+							.addComponent(numTestsLabelR, GroupLayout.DEFAULT_SIZE, 136, Short.MAX_VALUE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(numTestFieldR, 65, 65, 65)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(lenOfTestLabelR)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(testLengthFieldR, 61, 61, 61))
+						.addComponent(disconnectBtn, GroupLayout.DEFAULT_SIZE, 426, Short.MAX_VALUE)
+						.addGroup(layout.createSequentialGroup()
+							.addComponent(writeModeLabel, GroupLayout.DEFAULT_SIZE, 421, Short.MAX_VALUE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(jSeparator1, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
+						.addGroup(layout.createSequentialGroup()
+							.addComponent(jSeparator2, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(readModeLabel, GroupLayout.DEFAULT_SIZE, 421, Short.MAX_VALUE))
+						.addGroup(layout.createSequentialGroup()
+							.addComponent(lblFilePrefix)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(PrefixNameOfFileField, GroupLayout.PREFERRED_SIZE, 99, GroupLayout.PREFERRED_SIZE)
+							.addGap(69)
+							.addComponent(lblFileSuffix, GroupLayout.PREFERRED_SIZE, 80, GroupLayout.PREFERRED_SIZE)
+							.addGap(18)
+							.addComponent(SuffixNameOfFileField, GroupLayout.PREFERRED_SIZE, 99, GroupLayout.PREFERRED_SIZE))
+						.addGroup(layout.createSequentialGroup()
+							.addGroup(layout.createParallelGroup(Alignment.LEADING)
+								.addComponent(accelFilterLabel, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+								.addComponent(lenOfTestLabel, GroupLayout.DEFAULT_SIZE, 139, Short.MAX_VALUE))
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addGroup(layout.createParallelGroup(Alignment.LEADING)
+								.addComponent(accelFilterComboBox, 0, 59, Short.MAX_VALUE)
+								.addComponent(testLengthField, GroupLayout.PREFERRED_SIZE, 59, GroupLayout.PREFERRED_SIZE))
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addGroup(layout.createParallelGroup(Alignment.LEADING)
+								.addComponent(writeBtn, Alignment.TRAILING, GroupLayout.DEFAULT_SIZE, 203, Short.MAX_VALUE)
 								.addGroup(layout.createSequentialGroup()
-										.addGroup(layout.createParallelGroup(Alignment.LEADING)
-												.addComponent(jProgressBar1, GroupLayout.DEFAULT_SIZE, 421, Short.MAX_VALUE)
-												.addGroup(layout.createSequentialGroup()
-														.addGroup(layout.createParallelGroup(Alignment.LEADING)
-																.addComponent(writeStatusLabel, GroupLayout.PREFERRED_SIZE, 400, GroupLayout.PREFERRED_SIZE)
-																.addComponent(saveOnly9AxisCheck, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-																.addGroup(layout.createSequentialGroup()
-																		.addGroup(layout.createParallelGroup(Alignment.TRAILING)
-																				.addComponent(lblFilePrefix)
-																				.addComponent(nameOfFileLabel))
-																		.addPreferredGap(ComponentPlacement.UNRELATED)
-																		.addGroup(layout.createParallelGroup(Alignment.LEADING)
-																				.addGroup(layout.createSequentialGroup()
-																						.addComponent(PrefixNameOfFileField, GroupLayout.PREFERRED_SIZE, 99, GroupLayout.PREFERRED_SIZE)
-																						.addGap(50)
-																						.addComponent(lblFileSuffix, GroupLayout.PREFERRED_SIZE, 47, GroupLayout.PREFERRED_SIZE)
-																						.addPreferredGap(ComponentPlacement.RELATED, 34, Short.MAX_VALUE)
-																						.addComponent(SuffixNameOfFileField, GroupLayout.PREFERRED_SIZE, 99, GroupLayout.PREFERRED_SIZE))
-																				.addGroup(layout.createSequentialGroup()
-																						.addComponent(nameOfFileField, GroupLayout.PREFERRED_SIZE, 233, GroupLayout.PREFERRED_SIZE)
-																						.addPreferredGap(ComponentPlacement.RELATED)
-																						.addComponent(fileOutputDirectory, GroupLayout.DEFAULT_SIZE, 90, Short.MAX_VALUE)))))
-														.addGap(0, 19, Short.MAX_VALUE)))
-										.addGap(17))
-								.addGroup(layout.createSequentialGroup()
-										.addComponent(writeModeStateLabel, GroupLayout.DEFAULT_SIZE, 428, Short.MAX_VALUE)
-										.addContainerGap())
-								.addGroup(layout.createSequentialGroup()
-										.addGroup(layout.createParallelGroup(Alignment.TRAILING)
-												.addGroup(layout.createSequentialGroup()
-														.addComponent(saveTestParamsCheck, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-														.addGap(0, 229, Short.MAX_VALUE))
-												.addGroup(layout.createSequentialGroup()
-														.addGroup(layout.createParallelGroup(Alignment.TRAILING)
-																.addComponent(lenOfTestLabel, GroupLayout.DEFAULT_SIZE, 129, Short.MAX_VALUE)
-																.addComponent(accelGyroSampleLabel, GroupLayout.DEFAULT_SIZE, 129, Short.MAX_VALUE)
-																.addComponent(accelSensiLabel, Alignment.LEADING, GroupLayout.DEFAULT_SIZE, 129, Short.MAX_VALUE)
-																.addComponent(accelFilterLabel, Alignment.LEADING, GroupLayout.DEFAULT_SIZE, 129, Short.MAX_VALUE))
-														.addPreferredGap(ComponentPlacement.RELATED)
-														.addGroup(layout.createParallelGroup(Alignment.LEADING)
-																.addGroup(layout.createSequentialGroup()
-																		.addComponent(accelGyroSampleField, GroupLayout.PREFERRED_SIZE, 62, GroupLayout.PREFERRED_SIZE)
-																		.addPreferredGap(ComponentPlacement.UNRELATED)
-																		.addComponent(magSampleLabel, GroupLayout.PREFERRED_SIZE, 140, GroupLayout.PREFERRED_SIZE)
-																		.addPreferredGap(ComponentPlacement.RELATED, 10, Short.MAX_VALUE)
-																		.addComponent(magSampleField, GroupLayout.PREFERRED_SIZE, 66, GroupLayout.PREFERRED_SIZE))
-																.addGroup(layout.createSequentialGroup()
-																		.addComponent(testLengthField, GroupLayout.PREFERRED_SIZE, 59, GroupLayout.PREFERRED_SIZE)
-																		.addGap(11)
-																		.addComponent(writeBtn, GroupLayout.DEFAULT_SIZE, 218, Short.MAX_VALUE))
-																.addGroup(layout.createSequentialGroup()
-																		.addGroup(layout.createParallelGroup(Alignment.LEADING, false)
-																				.addComponent(accelFilterComboBox, 0, 1, Short.MAX_VALUE)
-																				.addComponent(accelSensiComboBox, 0, 60, Short.MAX_VALUE))
-																		.addGroup(layout.createParallelGroup(Alignment.TRAILING)
-																				.addGroup(layout.createSequentialGroup()
-																						.addPreferredGap(ComponentPlacement.UNRELATED)
-																						.addComponent(gyroSensiLabel, GroupLayout.DEFAULT_SIZE, 138, Short.MAX_VALUE))
-																				.addGroup(layout.createSequentialGroup()
-																						.addGap(11)
-																						.addComponent(gyroFilterLabel, GroupLayout.PREFERRED_SIZE, 134, GroupLayout.PREFERRED_SIZE)))
-																		.addPreferredGap(ComponentPlacement.UNRELATED, 13, Short.MAX_VALUE)
-																		.addGroup(layout.createParallelGroup(Alignment.LEADING, false)
-																				.addComponent(gyroSensiComboBox, 0, 66, Short.MAX_VALUE)
-																				.addComponent(gyroFilterComboBox, 0, 1, Short.MAX_VALUE))
-																		.addGap(1)))
-														.addGap(7))
-												.addGroup(layout.createSequentialGroup()
-														.addComponent(serialToggleBtn, GroupLayout.PREFERRED_SIZE, 95, GroupLayout.PREFERRED_SIZE)
-														.addPreferredGap(ComponentPlacement.RELATED)
-														.addComponent(commPortsBtn, GroupLayout.DEFAULT_SIZE, 203, Short.MAX_VALUE)
-														.addPreferredGap(ComponentPlacement.RELATED)
-														.addComponent(commPortsComboBox, GroupLayout.PREFERRED_SIZE, 110, GroupLayout.PREFERRED_SIZE))
-												.addGroup(layout.createSequentialGroup()
-														.addComponent(timeStampCheck, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-														.addGap(325)))
-										.addContainerGap())
-								.addGroup(layout.createSequentialGroup()
-										.addGroup(layout.createParallelGroup(Alignment.LEADING)
-												.addComponent(accelSensiLabelR, GroupLayout.PREFERRED_SIZE, 117, GroupLayout.PREFERRED_SIZE)
-												.addComponent(accelFilterLabelR, GroupLayout.PREFERRED_SIZE, 123, GroupLayout.PREFERRED_SIZE))
-										.addGap(6)
-										.addGroup(layout.createParallelGroup(Alignment.LEADING)
-												.addGroup(layout.createSequentialGroup()
-														.addComponent(accelFilterFieldR, GroupLayout.PREFERRED_SIZE, 59, GroupLayout.PREFERRED_SIZE)
-														.addGap(18)
-														.addComponent(gyroFilterLabelR, GroupLayout.PREFERRED_SIZE, 134, GroupLayout.PREFERRED_SIZE))
-												.addGroup(layout.createSequentialGroup()
-														.addComponent(accelSensiFieldR, GroupLayout.PREFERRED_SIZE, 58, GroupLayout.PREFERRED_SIZE)
-														.addGap(18)
-														.addComponent(gyroSensiLabelR, GroupLayout.PREFERRED_SIZE, 149, GroupLayout.PREFERRED_SIZE)))
-										.addGap(1)
-										.addGroup(layout.createParallelGroup(Alignment.LEADING)
-												.addComponent(gyroSensiFieldR, 61, 61, 61)
-												.addComponent(gyroFilterFieldR, 61, 61, 61))
-										.addGap(18))
-								.addGroup(layout.createSequentialGroup()
-										.addGroup(layout.createParallelGroup(Alignment.LEADING, false)
-												.addComponent(accelGyroSampleLabelR, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-												.addComponent(numTestsLabelR, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-										.addPreferredGap(ComponentPlacement.UNRELATED)
-										.addGroup(layout.createParallelGroup(Alignment.LEADING, false)
-												.addComponent(numTestFieldR)
-												.addComponent(accelGyroSampleFieldR, GroupLayout.DEFAULT_SIZE, 60, Short.MAX_VALUE))
-										.addGroup(layout.createParallelGroup(Alignment.LEADING)
-												.addGroup(layout.createSequentialGroup()
-														.addGap(16)
-														.addComponent(magSampleLabelR, GroupLayout.PREFERRED_SIZE, 140, GroupLayout.PREFERRED_SIZE))
-												.addGroup(layout.createSequentialGroup()
-														.addGap(18)
-														.addComponent(lenOfTestLabelR)))
-										.addPreferredGap(ComponentPlacement.UNRELATED)
-										.addGroup(layout.createParallelGroup(Alignment.LEADING, false)
-												.addComponent(magSampleFieldR, GroupLayout.DEFAULT_SIZE, 61, Short.MAX_VALUE)
-												.addComponent(testLengthFieldR))
-										.addContainerGap(22, Short.MAX_VALUE))
-								.addGroup(layout.createSequentialGroup()
-										.addGroup(layout.createParallelGroup(Alignment.TRAILING)
-												.addComponent(disconnectBtn, Alignment.LEADING, GroupLayout.DEFAULT_SIZE, 428, Short.MAX_VALUE)
-												.addComponent(jSeparator1, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
-										.addContainerGap())
-								.addGroup(layout.createSequentialGroup()
-										.addComponent(writeModeLabel, GroupLayout.DEFAULT_SIZE, 428, Short.MAX_VALUE)
-										.addContainerGap())
-								.addGroup(layout.createSequentialGroup()
-										.addComponent(jSeparator2, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-										.addPreferredGap(ComponentPlacement.RELATED)
-										.addComponent(readModeLabel, GroupLayout.DEFAULT_SIZE, 417, Short.MAX_VALUE)
-										.addGap(17))))
-				.addGroup(layout.createSequentialGroup()
-						.addContainerGap()
-						.addComponent(readModeStateLabel, GroupLayout.DEFAULT_SIZE, 421, Short.MAX_VALUE)
-						.addGap(17))
-				);
+									.addComponent(gyroFilterLabel, GroupLayout.PREFERRED_SIZE, 134, GroupLayout.PREFERRED_SIZE)
+									.addPreferredGap(ComponentPlacement.RELATED)
+									.addComponent(gyroFilterComboBox, 0, 64, Short.MAX_VALUE)))))
+					.addGap(23))
+		);
 		layout.setVerticalGroup(
-				layout.createParallelGroup(Alignment.LEADING)
+			layout.createParallelGroup(Alignment.LEADING)
 				.addGroup(layout.createSequentialGroup()
-						.addContainerGap()
-						.addGroup(layout.createParallelGroup(Alignment.LEADING)
+					.addContainerGap()
+					.addGroup(layout.createParallelGroup(Alignment.TRAILING)
+						.addComponent(writeBtn, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+						.addGroup(layout.createSequentialGroup()
+							.addGroup(layout.createParallelGroup(Alignment.LEADING)
 								.addGroup(layout.createParallelGroup(Alignment.LEADING, false)
-										.addComponent(commPortsBtn, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-										.addComponent(commPortsComboBox, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
+									.addComponent(commPortsBtn, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+									.addComponent(commPortsComboBox, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
 								.addComponent(serialToggleBtn, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
-						.addPreferredGap(ComponentPlacement.UNRELATED)
-						.addComponent(mainStatusLabel)
-						.addPreferredGap(ComponentPlacement.RELATED)
-						.addComponent(disconnectBtn, GroupLayout.PREFERRED_SIZE, 36, GroupLayout.PREFERRED_SIZE)
-						.addPreferredGap(ComponentPlacement.RELATED)
-						.addComponent(jSeparator1, GroupLayout.PREFERRED_SIZE, 10, GroupLayout.PREFERRED_SIZE)
-						.addPreferredGap(ComponentPlacement.RELATED)
-						.addComponent(writeModeLabel)
-						.addPreferredGap(ComponentPlacement.RELATED)
-						.addComponent(writeModeStateLabel)
-						.addGap(2)
-						.addGroup(layout.createParallelGroup(Alignment.BASELINE)
+							.addPreferredGap(ComponentPlacement.UNRELATED)
+							.addComponent(mainStatusLabel)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(disconnectBtn, GroupLayout.PREFERRED_SIZE, 36, GroupLayout.PREFERRED_SIZE)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addGroup(layout.createParallelGroup(Alignment.LEADING)
+								.addComponent(jSeparator1, GroupLayout.PREFERRED_SIZE, 10, GroupLayout.PREFERRED_SIZE)
+								.addComponent(writeModeLabel))
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(writeModeStateLabel)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(timedTestCheckbox)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addGroup(layout.createParallelGroup(Alignment.BASELINE)
 								.addComponent(magSampleLabel, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
 								.addComponent(magSampleField, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
 								.addComponent(accelGyroSampleField, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
 								.addComponent(accelGyroSampleLabel, GroupLayout.PREFERRED_SIZE, 22, GroupLayout.PREFERRED_SIZE))
-						.addPreferredGap(ComponentPlacement.RELATED)
-						.addGroup(layout.createParallelGroup(Alignment.LEADING, false)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addGroup(layout.createParallelGroup(Alignment.LEADING, false)
 								.addComponent(accelSensiLabel, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
 								.addGroup(layout.createParallelGroup(Alignment.BASELINE)
-										.addComponent(gyroSensiLabel, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-										.addComponent(accelSensiComboBox, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-										.addComponent(gyroSensiComboBox, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)))
-						.addPreferredGap(ComponentPlacement.RELATED)
-						.addGroup(layout.createParallelGroup(Alignment.BASELINE)
+									.addComponent(gyroSensiLabel, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+									.addComponent(accelSensiComboBox, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+									.addComponent(gyroSensiComboBox, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)))
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addGroup(layout.createParallelGroup(Alignment.BASELINE)
 								.addComponent(accelFilterLabel, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
 								.addComponent(gyroFilterLabel, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
 								.addComponent(accelFilterComboBox, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
 								.addComponent(gyroFilterComboBox, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
-						.addGap(2)
-						.addGroup(layout.createParallelGroup(Alignment.TRAILING)
-								.addGroup(layout.createParallelGroup(Alignment.BASELINE)
-										.addComponent(lenOfTestLabel)
-										.addComponent(testLengthField, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
-								.addComponent(writeBtn, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
-						.addPreferredGap(ComponentPlacement.RELATED)
-						.addGroup(layout.createParallelGroup(Alignment.LEADING)
-								.addComponent(jSeparator2, GroupLayout.PREFERRED_SIZE, 10, GroupLayout.PREFERRED_SIZE)
-								.addGroup(layout.createSequentialGroup()
-										.addComponent(readModeLabel)
-										.addPreferredGap(ComponentPlacement.RELATED)
-										.addComponent(readModeStateLabel)))
-						.addPreferredGap(ComponentPlacement.RELATED)
-						.addGroup(layout.createParallelGroup(Alignment.LEADING)
-								.addGroup(layout.createParallelGroup(Alignment.BASELINE)
-										.addComponent(PrefixNameOfFileField, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-										.addComponent(lblFilePrefix))
-								.addGroup(layout.createParallelGroup(Alignment.BASELINE)
-										.addComponent(SuffixNameOfFileField, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-										.addComponent(lblFileSuffix)))
-						.addPreferredGap(ComponentPlacement.RELATED)
+							.addGap(4)
+							.addGroup(layout.createParallelGroup(Alignment.BASELINE)
+								.addComponent(testLengthField, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+								.addComponent(lenOfTestLabel))))
+					.addPreferredGap(ComponentPlacement.RELATED)
+					.addGroup(layout.createParallelGroup(Alignment.LEADING)
+						.addComponent(jSeparator2, GroupLayout.PREFERRED_SIZE, 10, GroupLayout.PREFERRED_SIZE)
+						.addGroup(layout.createSequentialGroup()
+							.addComponent(readModeLabel)
+							.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(readModeStateLabel)))
+					.addPreferredGap(ComponentPlacement.RELATED)
+					.addGroup(layout.createParallelGroup(Alignment.LEADING)
 						.addGroup(layout.createParallelGroup(Alignment.BASELINE)
-								.addComponent(nameOfFileLabel)
-								.addComponent(nameOfFileField, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-								.addComponent(fileOutputDirectory))
-						.addPreferredGap(ComponentPlacement.RELATED)
-						.addComponent(timeStampCheck, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-						.addGap(1)
-						.addComponent(saveOnly9AxisCheck, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-						.addGap(2)
-						.addComponent(saveTestParamsCheck, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-						.addPreferredGap(ComponentPlacement.RELATED)
-						.addComponent(writeStatusLabel, GroupLayout.PREFERRED_SIZE, 14, GroupLayout.PREFERRED_SIZE)
-						.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(PrefixNameOfFileField, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+							.addComponent(lblFilePrefix))
 						.addGroup(layout.createParallelGroup(Alignment.BASELINE)
-								.addComponent(lenOfTestLabelR)
-								.addComponent(testLengthFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-								.addComponent(numTestsLabelR)
-								.addComponent(numTestFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
-						.addPreferredGap(ComponentPlacement.RELATED)
+							.addComponent(SuffixNameOfFileField, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+							.addComponent(lblFileSuffix)))
+					.addPreferredGap(ComponentPlacement.RELATED)
+					.addGroup(layout.createParallelGroup(Alignment.BASELINE)
+						.addComponent(nameOfFileLabel)
+						.addComponent(nameOfFileField, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+						.addComponent(fileOutputDirectory))
+					.addPreferredGap(ComponentPlacement.RELATED)
+					.addComponent(timeStampCheck, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+					.addGap(1)
+					.addComponent(saveOnly9AxisCheck, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+					.addGap(2)
+					.addComponent(saveTestParamsCheck, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+					.addPreferredGap(ComponentPlacement.RELATED)
+					.addComponent(writeStatusLabel, GroupLayout.PREFERRED_SIZE, 14, GroupLayout.PREFERRED_SIZE)
+					.addPreferredGap(ComponentPlacement.RELATED)
+					.addGroup(layout.createParallelGroup(Alignment.BASELINE)
+						.addComponent(lenOfTestLabelR)
+						.addComponent(testLengthFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+						.addComponent(numTestsLabelR)
+						.addComponent(numTestFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
+					.addPreferredGap(ComponentPlacement.RELATED)
+					.addGroup(layout.createParallelGroup(Alignment.BASELINE)
+						.addComponent(magSampleLabelR, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+						.addComponent(magSampleFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+						.addComponent(accelGyroSampleLabelR, GroupLayout.PREFERRED_SIZE, 22, GroupLayout.PREFERRED_SIZE)
+						.addComponent(accelGyroSampleFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
+					.addPreferredGap(ComponentPlacement.RELATED)
+					.addGroup(layout.createParallelGroup(Alignment.LEADING, false)
+						.addComponent(accelSensiLabelR, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
 						.addGroup(layout.createParallelGroup(Alignment.BASELINE)
-								.addComponent(magSampleLabelR, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-								.addComponent(magSampleFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-								.addComponent(accelGyroSampleFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-								.addComponent(accelGyroSampleLabelR, GroupLayout.PREFERRED_SIZE, 22, GroupLayout.PREFERRED_SIZE))
-						.addPreferredGap(ComponentPlacement.RELATED)
-						.addGroup(layout.createParallelGroup(Alignment.LEADING, false)
-								.addComponent(accelSensiLabelR, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-								.addGroup(layout.createParallelGroup(Alignment.BASELINE)
-										.addComponent(accelSensiFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-										.addComponent(gyroSensiLabelR, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-										.addComponent(gyroSensiFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)))
-						.addPreferredGap(ComponentPlacement.RELATED)
-						.addGroup(layout.createParallelGroup(Alignment.BASELINE)
-								.addComponent(accelFilterLabelR, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-								.addComponent(accelFilterFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-								.addComponent(gyroFilterFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-								.addComponent(gyroFilterLabelR, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-						.addPreferredGap(ComponentPlacement.UNRELATED)
-						.addComponent(jProgressBar1, GroupLayout.PREFERRED_SIZE, 23, GroupLayout.PREFERRED_SIZE)
-						.addGap(26))
-				);
+							.addComponent(accelSensiFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+							.addComponent(gyroSensiLabelR, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+							.addComponent(gyroSensiFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)))
+					.addPreferredGap(ComponentPlacement.RELATED)
+					.addGroup(layout.createParallelGroup(Alignment.BASELINE)
+						.addComponent(accelFilterLabelR, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+						.addComponent(accelFilterFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+						.addComponent(gyroFilterFieldR, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+						.addComponent(gyroFilterLabelR, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+					.addPreferredGap(ComponentPlacement.UNRELATED)
+					.addComponent(jProgressBar1, GroupLayout.PREFERRED_SIZE, 23, GroupLayout.PREFERRED_SIZE)
+					.addGap(14))
+		);
 		getContentPane().setLayout(layout);
 
 		pack();
@@ -1200,6 +1175,5 @@ public class Frame extends JFrame {
 	private JTextField SuffixNameOfFileField;
 	private JLabel lblFilePrefix;
 	private JLabel lblFileSuffix;
-
-
+	private JCheckBox timedTestCheckbox;
 }
