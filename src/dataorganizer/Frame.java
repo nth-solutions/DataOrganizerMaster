@@ -662,12 +662,18 @@ public class Frame extends JFrame {
 	public boolean getReadModeFlag() {
 		return readMode;
 	}
+	
+	private void updateConfigFields() {
+		
+	}
 
 
 
 
 
 	private void initComponents() {
+		
+		updateConfigFields();
 
 		magSampleField = new javax.swing.JTextField();
 		magSampleLabel = new javax.swing.JLabel();
