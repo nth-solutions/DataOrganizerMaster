@@ -30,7 +30,6 @@ public class Organizer {        //Class for Creating .CSV files
         for(int pos = 0; pos < data.length; pos++) {
         	if(data[pos] == -1) {
         		endPosition = pos;
-        		//System.out.println(endPosition);
         	}
         }
         
@@ -164,6 +163,7 @@ public class Organizer {        //Class for Creating .CSV files
         	}
         } 
         catch (FileNotFoundException e) {
+   
             return false;
         } 
         
@@ -177,8 +177,11 @@ public class Organizer {        //Class for Creating .CSV files
         dashBoard.updateProgress(100);
         DataFile.write(builder.toString());     //writes the string buffer to the .CSV creating the file
         DataFile.close();                       //close the .CSV
+        
         return true;        
     }
+    
+
 }
 
 
