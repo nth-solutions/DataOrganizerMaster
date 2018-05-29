@@ -143,9 +143,9 @@ public class Dashboard extends JFrame {
 	private boolean dataStreamsInitialized = false;
 
 	private Thread readThread;
-	private Thread organizeThread;
 	private Thread paramThread;
-
+	private Thread infoThread;
+	private Thread bulkEraseThread;
 	//Output File Info and Variables
 	private String nameOfFile = "";     			//Sets the name of file to an empty string to start
 	private String fileOutputDirectoryStr;			//The directory to write the test to
@@ -435,7 +435,7 @@ public class Dashboard extends JFrame {
 							counter++;
 						} 
 						else {
-							counter = 1;
+							counter = start;
 						}
 					}
 					preambleReceived = true;
@@ -456,14 +456,49 @@ public class Dashboard extends JFrame {
 			progressBar.setForeground(new Color(255, 0, 0));
 		}
 
+		return true;
+	}
 
-
-
+	public boolean waitForPostamble(int start, int stop) {
+		try {
+			long startTime = System.currentTimeMillis();
+			boolean postambleReceived = false;
+			while (((System.currentTimeMillis() - startTime) < 60000)) {
+				if (inputStream.available() > 0) {
+					int temp;
+					for(int counter = start; counter >= stop;) {
+						temp = inputStream.read();
+						if (temp == counter) {    
+							counter--;
+						} 
+						else {
+							counter = start;
+						}
+					}
+					postambleReceived = true;
+					break;
+					//System.out.println(temp);
+				}
+			}
+			if (!postambleReceived) {
+				generalStatusLabel.setText("Module Unresponsive (Timeout), Try Again");
+				progressBar.setValue(100);
+				progressBar.setForeground(new Color(255, 0, 0));
+				return false;
+			}
+		}
+		catch(IOException e) {
+			generalStatusLabel.setText("Error Commicating with Dongle");
+			progressBar.setValue(100);
+			progressBar.setForeground(new Color(255, 0, 0));
+		}
 
 		return true;
 	}
 
 	public boolean configureForHandshake() {
+		serialPort.close();
+		openSerialPort(serialPort.getName());
 		try {
 			serialPort.setSerialPortParams(38400,      //Opens the serial port at 115200 Baud for high speed reading
 					SerialPort.DATABITS_8,
@@ -471,6 +506,7 @@ public class Dashboard extends JFrame {
 					SerialPort.PARITY_NONE);
 			outputStream = serialPort.getOutputStream();
 			inputStream = serialPort.getInputStream();
+			dataStreamsInitialized = true;
 		} 
 		catch (UnsupportedCommOperationException e) {
 			generalStatusLabel.setText("Check Serial Dongle Compatability!");
@@ -489,6 +525,8 @@ public class Dashboard extends JFrame {
 	}
 
 	public boolean configureForImport() {
+		serialPort.close();
+		openSerialPort(serialPort.getName());
 		try {
 			serialPort.setSerialPortParams(115200,      //Opens the serial port at 115200 Baud for high speed reading
 					SerialPort.DATABITS_8,
@@ -496,6 +534,7 @@ public class Dashboard extends JFrame {
 					SerialPort.PARITY_NONE);
 			outputStream = serialPort.getOutputStream();
 			inputStream = serialPort.getInputStream();
+			dataStreamsInitialized = true;
 		} 
 		catch (UnsupportedCommOperationException e) {
 			generalStatusLabel.setText("Check Serial Dongle Compatability!");
@@ -572,22 +611,62 @@ public class Dashboard extends JFrame {
 		}
 		catch (IOException e) {                                          //If there is an IOException
 			generalStatusLabel.setText("Error Communicating with Dongle");    //Notify the user that something broke
-			Logger.getLogger(Frame.class.getName()).log(Level.SEVERE, null, e);
-			//Exit method, communication failed
+			progressBar.setValue(100);
+			progressBar.setForeground(new Color(255,0,0));
 			return false;
 		} 
 		catch (NullPointerException e) {                                  //If there is a NullPointer
 			generalStatusLabel.setText("Please Select a Port");  //The serial port was not open; notifies the user about the mistake
-			Logger.getLogger(Frame.class.getName()).log(Level.SEVERE, null, e);
+			progressBar.setValue(100);
+			progressBar.setForeground(new Color(255,0,0));
 			//Exit method, communication failed
 			return false;
 		}
 		return true;
 	}
+
+	public void bulkEraseModule() {
+		Runnable bulkEraseOperation = new Runnable() {
+			public void run() {
+				bulkEraseButton.setEnabled(false);
+				sectorEraseButton.setEnabled(false);
+				bulkErase();
+				bulkEraseButton.setEnabled(true);
+				sectorEraseButton.setEnabled(true);
+			}
+		};
+
+		bulkEraseThread = new Thread(bulkEraseOperation);
+		bulkEraseThread.start();
+	}
+
+	public boolean bulkErase() {
+		generalStatusLabel.setText("Bulk Erasing...");
+		if(!selectMode('B')) {
+			return false;
+		}
+		waitForPostamble(4 , 1);
+		generalStatusLabel.setText("Bulk Erase Complete");
+		progressBar.setValue(100);
+		progressBar.setForeground(new Color(51, 204, 51));
+		return true;
+
+	}
+	public void sectorEraseModule() {
+
+	}
+
 	public void getModuleInfoButtonHandler() {
-		getModuleIDButton.setEnabled(false);
-		getModuleInfo();
-		getModuleIDButton.setEnabled(true);
+		Runnable getIDInfoOperation = new Runnable() {
+			public void run() {
+				getModuleIDButton.setEnabled(false);
+				getModuleInfo();
+				getModuleIDButton.setEnabled(true);
+			}
+		};
+
+		infoThread = new Thread(getIDInfoOperation);
+		infoThread.start();
 	}
 
 	public boolean getModuleInfo() {
@@ -634,7 +713,7 @@ public class Dashboard extends JFrame {
 									if (inputStream.read() == 'A') {
 										moduleInfo[idCounter] = temp;
 										idCounter++;
-										System.out.println(idCounter);
+										//System.out.println(idCounter);
 									}
 								}
 							}
@@ -657,7 +736,7 @@ public class Dashboard extends JFrame {
 					moduleSerialNumberLabel.setText("Module Serial Number: " + moduleInfo[0]);
 					hardwareIDLabel.setText("Module Hardware ID: " + moduleInfo[1] + "x");
 					firmwareIDLabel.setText("Module Firmware ID: " + moduleInfo[2]);
-					generalStatusLabel.setText("Module Information Successful Received");
+					generalStatusLabel.setText("Module Information Successfully Received");
 					progressBar.setValue(100);
 					progressBar.setForeground(new Color(51, 204, 51));
 				}
@@ -684,7 +763,7 @@ public class Dashboard extends JFrame {
 			}
 		};
 
-		Thread paramThread = new Thread(sendParamOperation);
+		paramThread = new Thread(sendParamOperation);
 		paramThread.start();
 
 	}
@@ -701,7 +780,7 @@ public class Dashboard extends JFrame {
 		try {
 			if (dataStreamsInitialized && !paramAbort) {
 
-				if(!selectMode('S')) {
+				if(!selectMode('P')) {
 					return false;
 				}
 
@@ -825,7 +904,7 @@ public class Dashboard extends JFrame {
 
 	public void readButtonHandler() {
 		//stopAllThreads();
-		
+
 		Runnable readOperation = new Runnable() {
 			public void run() {
 				readDataButton.setEnabled(false);
@@ -836,7 +915,7 @@ public class Dashboard extends JFrame {
 
 		readThread = new Thread(readOperation);
 		readThread.start();
-		
+
 	}
 
 	/**
@@ -853,7 +932,7 @@ public class Dashboard extends JFrame {
 				generalStatusLabel.setText("Reading Data From Module");
 				contentPanel.revalidate();
 				configureForImport();
-				
+
 				boolean dataReceived = false;
 				long importStartTime = System.currentTimeMillis();
 				while ((System.currentTimeMillis() - importStartTime) < 15000) {
@@ -866,7 +945,6 @@ public class Dashboard extends JFrame {
 
 						//Check for test parameter preamble
 						waitForPreamble(1,4);
-						System.out.println("Start Found");
 
 						//Determine number of tests to expect/ get test parameters
 						expectedTestNum = -1;
@@ -877,13 +955,13 @@ public class Dashboard extends JFrame {
 
 						}
 
-						generalStatusLabel.setText("Collecting Data for " + expectedTestNum + " Tests");//Tells the user how many tests are being transmitted
+						generalStatusLabel.setText("Importing and Converting Data for " + expectedTestNum + " Test(s)");//Tells the user how many tests are being transmitted
 						//reads the parameters for the test that are sent from the URI module
 						int paramNum = 0;
 						while (paramNum < NUM_TEST_PARAMETERS) {
 							if (inputStream.available() >= 2) {
 								testParameters.add(paramNum, (int) ((inputStream.read() * 256) + (inputStream.read())));
-								System.out.println(testParameters.get(paramNum));
+								//System.out.println(testParameters.get(paramNum));
 								paramNum++;
 							}
 							if (readAbort) {
@@ -925,7 +1003,7 @@ public class Dashboard extends JFrame {
 
 						while (testNum <= expectedTestNum) {
 							progressBar.setValue((int) ((100 *((double) testNum / (double) expectedTestNum))/ 1.25));      //Update the progress bar so the last test is no longer being displayed
-							
+
 							int temp = 0;
 							testData = new ArrayList<Integer>();
 							//Start Condition test, The program is expecting to receive "1-2-3-4-5-6-7-8" as the start condition
@@ -935,14 +1013,14 @@ public class Dashboard extends JFrame {
 							while (!stopCondition) {    //read all of the data on the serial buffer and store it in the test array
 								//System.out.println(inputStream.available());
 								if (inputStream.available() > 0) {
-									for(int counter = 8; counter > 0;) {
+									for(int counter = 8; counter >= 1;) {
 										temp = inputStream.read();
-										//System.out.println(temp);
 										testData.add(temp);
 										//System.out.println(Tests.get(testNum).get(i) + ".");
 
 										//System.out.println(temp);
-										if (temp == counter) {    
+										if (temp == counter) {  
+											//System.out.println(temp);
 											counter--;
 										} 
 										else {
@@ -980,10 +1058,10 @@ public class Dashboard extends JFrame {
 							nameOfFile = prefixTextField.getText() + " (#" + (testNum) + ") " + fileNameTextField.getText() + " " + suffixTextField.getText() + ".CSV";  //Add a number and .CSV to the file name
 							final int testID = testNum;		//Must be final to work in the sortData routine
 							final int numTests = expectedTestNum;
+							//System.out.println("Formatting");
 							Runnable organizerOperation = new Runnable() {
 								public void run() {
 									organizer.sortData(finalData, testID, numTests, nameOfFile, (accelGyroSampleRate / magSampleRate), (1 / accelGyroSampleRate), false, false, fileOutputDirectoryStr);  //create the .CSV with neccessary parameters
-
 								}
 							};
 
@@ -1006,7 +1084,7 @@ public class Dashboard extends JFrame {
 					generalStatusLabel.setText("Timeout");
 					return false;
 				}
-				
+
 			}
 			catch (IOException e){
 				generalStatusLabel.setText("Comm Port Error! Try Again");
@@ -1033,8 +1111,8 @@ public class Dashboard extends JFrame {
 			//Text Fields
 
 			testLengthTextField.setText("25");
-			accelGyroSampleRateTextField.setText("960");
-			magSampleRateTextField.setText("96");
+			accelGyroSampleRateTextField.setText("120");
+			magSampleRateTextField.setText("120");
 			delayAfterStartTextField.setText("0");
 			timer0TickThreshTextField.setText("0");
 
@@ -1105,7 +1183,7 @@ public class Dashboard extends JFrame {
 	}
 
 	public void updateProgress(int progress) {   //Method that updates the progress with the percentage that has been completed so far in making the .CSV file
-		//progressBar.setValue(progress);
+		progressBar.setValue(progress);
 	}
 
 	public void setWriteStatusLabel(String label) {
@@ -1508,20 +1586,30 @@ public class Dashboard extends JFrame {
 		});
 		writeConfigsButton.setFont(new Font("Tahoma", Font.PLAIN, 13));
 		configurationPanel.add(writeConfigsButton);
-		
+
 		erasePanel = new JPanel();
 		mainTabbedPanel.addTab("Erase", null, erasePanel, null);
 		erasePanel.setLayout(new GridLayout(1, 0, 0, 0));
-		
+
 		panel = new JPanel();
 		erasePanel.add(panel);
 		panel.setLayout(new GridLayout(0, 1, 0, 0));
-		
+
 		bulkEraseButton = new JButton("Bulk Erase");
 		panel.add(bulkEraseButton);
-		
+		bulkEraseButton.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				bulkEraseModule();
+			}
+		});
+
 		sectorEraseButton = new JButton("Sector Erase");
 		panel.add(sectorEraseButton);
+		sectorEraseButton.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				sectorEraseModule();
+			}
+		});
 
 		JPanel calibrationPanel = new JPanel();
 		mainTabbedPanel.addTab("Calibration", null, calibrationPanel, null);

@@ -6,7 +6,15 @@
 	<classpathentry kind="lib" path="commons-logging-1.2-javadoc.jar"/>
 	<classpathentry kind="lib" path="commons-logging-1.2.jar"/>
 	<classpathentry kind="lib" path="sjxlsx-1.0.0.jar"/>
-	<classpathentry kind="lib" path="purejavacomm.jar"/>
-	<classpathentry kind="lib" path="jna-4.0.0.jar"/>
+	<classpathentry kind="lib" path="purejavacomm.jar">
+		<attributes>
+			<attribute name="org.eclipse.jdt.launching.CLASSPATH_ATTR_LIBRARY_PATH_ENTRY" value="DataOrganizerMaster/bin"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="jna-4.0.0.jar">
+		<attributes>
+			<attribute name="org.eclipse.jdt.launching.CLASSPATH_ATTR_LIBRARY_PATH_ENTRY" value="DataOrganizerMaster/bin"/>
+		</attributes>
+	</classpathentry>
 	<classpathentry kind="output" path="build/classes"/>
 </classpath>
