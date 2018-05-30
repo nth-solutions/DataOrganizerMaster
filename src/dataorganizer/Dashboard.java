@@ -282,6 +282,7 @@ public class Dashboard extends JFrame {
 			try {
 				inputStream = serialPort.getInputStream();              //creates input stream
 				outputStream = serialPort.getOutputStream();            //creates output stream
+				calibrateUART();
 				dataStreamsInitialized = true;
 				disconnectButton.setEnabled(true);
 				getModuleIDButton.setEnabled(true);
@@ -295,63 +296,14 @@ public class Dashboard extends JFrame {
 		}
 	}
 
-	/**
-	 * Updates the serial port settings (specifically baud rate) based on which tab is currently selected
-	 */
-	public void updateSerialPortSettings() {
-		if (portOpened) {
-			stopAllThreads();
-			//Read Mode
-			if (mainTabbedPanel.getSelectedIndex() == 0) {
-				try {
-					serialPort.setSerialPortParams(115200,      //Opens the serial port at 115200 Baud for high speed reading
-							SerialPort.DATABITS_8,
-							SerialPort.STOPBITS_1,
-							SerialPort.PARITY_NONE);
-					outputStream = serialPort.getOutputStream();
-					inputStream = serialPort.getInputStream();
-				} 
-				catch (UnsupportedCommOperationException e) {
-					generalStatusLabel.setText("Check Serial Dongle Compatability!");
-				}
-				catch (IOException e) {
-					generalStatusLabel.setText("Error Communicating with Dongle");
+	public void calibrateUART() {
+		if (dataStreamsInitialized) {
+			try {
+				for(int i = 0; i < 10; i++) {
+					outputStream.write(0);
 				}
 			}
-			//Configuration Mode
-			else if (mainTabbedPanel.getSelectedIndex() == 1) {
-				try {
-					serialPort.setSerialPortParams(38400,      //Opens the serial port at 115200 Baud for high speed reading
-							SerialPort.DATABITS_8,
-							SerialPort.STOPBITS_1,
-							SerialPort.PARITY_NONE);
-					outputStream = serialPort.getOutputStream();
-					inputStream = serialPort.getInputStream();
-				} 
-				catch (UnsupportedCommOperationException e) {
-					generalStatusLabel.setText("Check Serial Dongle Compatability!");
-				}
-				catch (IOException e) {
-					generalStatusLabel.setText("Error Communicating with Dongle");
-				}
-			}
-
-			//Calibration Mode
-			else if (mainTabbedPanel.getSelectedIndex() == 2) {
-				try {
-					serialPort.setSerialPortParams(115200,      //Opens the serial port at 115200 Baud for high speed reading
-							SerialPort.DATABITS_8,
-							SerialPort.STOPBITS_1,
-							SerialPort.PARITY_NONE);
-					outputStream = serialPort.getOutputStream();
-					inputStream = serialPort.getInputStream();
-				} 
-				catch (UnsupportedCommOperationException e) {
-					generalStatusLabel.setText("Check Serial Dongle Compatability!");
-				}
-				catch (IOException e) {
-					generalStatusLabel.setText("Error Communicating with Dongle");
-				}		
+			catch (IOException e) {
 			}
 		}
 	}
@@ -642,6 +594,7 @@ public class Dashboard extends JFrame {
 
 	public boolean bulkErase() {
 		generalStatusLabel.setText("Bulk Erasing...");
+		progressBar.setValue(0);
 		if(!selectMode('B')) {
 			return false;
 		}
@@ -674,6 +627,9 @@ public class Dashboard extends JFrame {
 
 		//Configure Baud Rate for 38400 temporarily
 		configureForHandshake();
+
+		generalStatusLabel.setText("Obtaining Module ID Info");
+		progressBar.setValue(0);
 
 
 		if (dataStreamsInitialized) {
@@ -1604,6 +1560,7 @@ public class Dashboard extends JFrame {
 		});
 
 		sectorEraseButton = new JButton("Sector Erase");
+		sectorEraseButton.setEnabled(false);
 		panel.add(sectorEraseButton);
 		sectorEraseButton.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
