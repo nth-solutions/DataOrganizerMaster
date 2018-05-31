@@ -581,10 +581,10 @@ public class Dashboard extends JFrame {
 		Runnable bulkEraseOperation = new Runnable() {
 			public void run() {
 				bulkEraseButton.setEnabled(false);
-				sectorEraseButton.setEnabled(false);
+				//sectorEraseButton.setEnabled(false);
 				bulkErase();
 				bulkEraseButton.setEnabled(true);
-				sectorEraseButton.setEnabled(true);
+				//sectorEraseButton.setEnabled(true);
 			}
 		};
 
@@ -886,12 +886,10 @@ public class Dashboard extends JFrame {
 				configureForHandshake();
 
 				generalStatusLabel.setText("Reading Data From Module");
-				contentPanel.revalidate();
-				configureForImport();
 
 				boolean dataReceived = false;
 				long importStartTime = System.currentTimeMillis();
-				while ((System.currentTimeMillis() - importStartTime) < 15000) {
+				while ((System.currentTimeMillis() - importStartTime) < 5000) {
 					if (inputStream.available() > 0) {      
 						progressBar.setValue(0);                           //sets the progress bat to 0 percent
 
@@ -900,8 +898,11 @@ public class Dashboard extends JFrame {
 						//ArrayList<ArrayList<Integer>> Tests = new ArrayList<ArrayList<Integer>>();
 
 						//Check for test parameter preamble
+						System.out.println("WAITING FOR PREAMBLE");
 						waitForPreamble(1,4);
-
+						System.out.println("PREAMBLE");
+						
+						configureForImport();
 						//Determine number of tests to expect/ get test parameters
 						expectedTestNum = -1;
 						while(expectedTestNum == -1) {
